@@ -87,6 +87,20 @@ describe('trackUser', () => {
     });
   });
 
+  it('handles empty username without crashing', () => {
+    const sendBeaconMock = vi.fn().mockReturnValue(true);
+
+    Object.defineProperty(navigator, 'sendBeacon', {
+      value: sendBeaconMock,
+      configurable: true,
+    });
+
+    trackUser('');
+
+    expect(sendBeaconMock).toHaveBeenCalledTimes(1);
+    expect(sendBeaconMock).toHaveBeenCalledWith('/api/track-user', expect.any(Blob));
+  });
+
   it('falls back to fetch when sendBeacon returns false', () => {
     const sendBeaconMock = vi.fn().mockReturnValue(false);
 
