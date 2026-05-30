@@ -152,3 +152,31 @@ describe('getSecondsUntilMidnightInTimezone', () => {
     expect(getSecondsUntilMidnightInTimezone('Etc/GMT-14')).toBe(10 * 3600);
   });
 });
+
+describe('getSecondsUntilUTCMidnight — sliding window boundary robustness', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('returns correct TTL across a sliding window of times approaching UTC midnight', () => {
+    // Verifies that the utility guarantees keys expire exactly at the window limit.
+    // Each entry is [UTC time string, expected seconds until next midnight].
+    const cases: [string, number][] = [
+      ['2024-06-15T23:00:00.000Z', 3600], // 1 hour before midnight
+      ['2024-06-15T23:30:00.000Z', 1800], // 30 minutes before midnight
+      ['2024-06-15T23:45:00.000Z', 900], // 15 minutes before midnight
+      ['2024-06-15T23:59:00.000Z', 60], // 1 minute before midnight
+      ['2024-06-15T23:59:59.000Z', 1], // 1 second before midnight
+      ['2024-06-16T00:00:00.000Z', 86400], // exactly at midnight, resets to full day
+    ];
+
+    for (const [time, expected] of cases) {
+      vi.setSystemTime(new Date(time));
+      expect(getSecondsUntilUTCMidnight()).toBe(expected);
+    }
+  });
+});
