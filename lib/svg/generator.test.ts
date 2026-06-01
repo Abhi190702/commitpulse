@@ -16,6 +16,14 @@ import type { BadgeParams, ContributionCalendar, StreakStats, MonthlyStats } fro
 import { hexColor } from './sanitizer';
 import { themes } from './themes';
 
+function assertValidSVG(svgString: string): void {
+  const doc = new DOMParser().parseFromString(svgString, 'image/svg+xml');
+
+  const parserError = doc.querySelector('parsererror');
+
+  expect(parserError).toBeNull();
+}
+
 describe('generateSVG', () => {
   const mockStats: StreakStats = {
     currentStreak: 5,
@@ -50,6 +58,8 @@ describe('generateSVG', () => {
       mockCalendar
     );
 
+    assertValidSVG(svg);
+
     expect(svg).not.toContain('CURRENT_STREAK');
     expect(svg).not.toContain('ANNUAL_SYNC_TOTAL');
     expect(svg).not.toContain('PEAK_STREAK');
@@ -70,6 +80,8 @@ describe('generateSVG', () => {
       mockCalendar
     );
 
+    assertValidSVG(svg);
+
     expect(svg).toContain('CURRENT_STREAK');
     expect(svg).toContain('ANNUAL_SYNC_TOTAL');
     expect(svg).toContain('PEAK_STREAK');
@@ -77,6 +89,8 @@ describe('generateSVG', () => {
 
   it('uses default typography when no font is passed', () => {
     const svg = generateSVG(mockStats, { user: 'avi' } as unknown as BadgeParams, mockCalendar);
+
+    assertValidSVG(svg);
 
     expect(svg).toContain('Syncopate');
     expect(svg).toContain('Space Grotesk');
@@ -89,6 +103,8 @@ describe('generateSVG', () => {
       mockCalendar
     );
 
+    assertValidSVG(svg);
+
     expect(svg).toContain('JetBrains Mono');
   });
 
@@ -98,6 +114,8 @@ describe('generateSVG', () => {
       { user: 'avi', radius: 0 } as unknown as BadgeParams,
       mockCalendar
     );
+
+    assertValidSVG(svg);
 
     expect(svg).toContain('rx="0"');
   });
@@ -1079,6 +1097,41 @@ describe('generateMonthlySVG', () => {
     } as unknown as BadgeParams);
 
     expect(svg).toContain('COMMITS THIS MONTH');
+  });
+
+  it('renders monthly stats correctly with null deltaPercentage for delta_format percent', () => {
+    const nullDeltaStats: MonthlyStats = {
+      currentMonthTotal: 15,
+      previousMonthTotal: 0,
+      deltaPercentage: null,
+      deltaAbsolute: 15,
+      currentMonthName: 'June',
+    };
+
+    const svg = generateMonthlySVG(nullDeltaStats, {
+      user: 'octocat',
+      delta_format: 'percent',
+    } as unknown as BadgeParams);
+
+    expect(svg).toContain('N/A');
+    expect(svg).not.toContain('%');
+  });
+
+  it('renders monthly stats correctly with null deltaPercentage for delta_format both', () => {
+    const nullDeltaStats: MonthlyStats = {
+      currentMonthTotal: 15,
+      previousMonthTotal: 0,
+      deltaPercentage: null,
+      deltaAbsolute: 15,
+      currentMonthName: 'June',
+    };
+
+    const svg = generateMonthlySVG(nullDeltaStats, {
+      user: 'octocat',
+      delta_format: 'both',
+    } as unknown as BadgeParams);
+
+    expect(svg).toContain('N/A (+15)');
   });
 });
 
