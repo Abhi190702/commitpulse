@@ -10,9 +10,11 @@ import {
   getSizeScale,
   truncateUsername,
   deterministicRandom,
+  buildTowerPaths,
 } from './generator';
 import type { BadgeParams, ContributionCalendar, StreakStats, MonthlyStats } from '../../types';
 import { hexColor } from './sanitizer';
+import { themes } from './themes';
 
 describe('generateSVG', () => {
   const mockStats: StreakStats = {
@@ -867,6 +869,29 @@ describe('generateSVG', () => {
       expect(svg).not.toContain('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
     });
   });
+
+  describe('verify all supported themes produce valid SVG output', () => {
+    it('generates a valid SVG and contains the theme accent color for each supported theme', () => {
+      for (const theme of Object.values(themes)) {
+        const svg = generateSVG(
+          mockStats,
+          {
+            user: 'octocat',
+            bg: theme.bg,
+            text: theme.text,
+            accent: theme.accent,
+            speed: '8s',
+            scale: 'linear',
+          } as unknown as BadgeParams,
+          mockCalendar
+        );
+
+        expect(svg).toContain('<svg');
+        expect(svg).toContain('</svg>');
+        expect(svg.toLowerCase()).toContain(theme.accent.toLowerCase());
+      }
+    });
+  });
 });
 
 describe('generateMonthlySVG', () => {
@@ -1210,6 +1235,10 @@ describe('escapeXML', () => {
   });
   it('escapes script injection characters <script>&" together', () => {
     expect(escapeXML('<script>&"')).toBe('&lt;script&gt;&amp;&quot;');
+  });
+
+  it('should handle boundary input with only special XML characters', () => {
+    expect(escapeXML('<>&"\'')).toBe('&lt;&gt;&amp;&quot;&#39;');
   });
 });
 
@@ -1567,5 +1596,18 @@ describe('SVG Structural Validity and Cleanliness', () => {
     expect(titleCount).toBe(1);
     const styleImportCount = (svg.match(/@import url/g) || []).length;
     expect(styleImportCount).toBe(1);
+describe('buildTowerPaths', () => {
+  it('returns correct paths for scale 1', () => {
+    const paths = buildTowerPaths(15, 1);
+    expect(paths.left).toBe('M0 -5 L0 10 L-16 0 L-16 -15 Z');
+    expect(paths.right).toBe('M0 -5 L0 10 L16 0 L16 -15 Z');
+    expect(paths.top).toBe('M0 -15 L16 -5 L0 5 L-16 -5 Z');
+  });
+
+  it('returns correct paths for scale 0.45', () => {
+    const paths = buildTowerPaths(9, 0.45);
+    expect(paths.left).toBe('M0 -4.5 L0 4.5 L-7.2 0 L-7.2 -9 Z');
+    expect(paths.right).toBe('M0 -4.5 L0 4.5 L7.2 0 L7.2 -9 Z');
+    expect(paths.top).toBe('M0 -9 L7.2 -4.5 L0 0 L-7.2 -4.5 Z');
   });
 });
