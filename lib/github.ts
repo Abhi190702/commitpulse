@@ -747,6 +747,8 @@ export async function getOrgDashboardData(orgName: string, options: FetchOptions
     throw new Error('This endpoint is strictly for organizations.');
   if (membersOrError instanceof Error) throw membersOrError;
 
+  const members = membersOrError;
+
   // Limit active members to first 60 to protect shared token rate limit
   const activeMembers = members.slice(0, 60);
 
