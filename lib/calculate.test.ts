@@ -592,6 +592,66 @@ describe('calculateStreak', () => {
     expect(resultLeapContinuous.longestStreak).toBe(3);
   });
 
+  it('verify streak formulas for leap year transition timeline (Variation 3)', () => {
+    const buildCustomCalendar = (
+      daysData: { date: string; count: number }[]
+    ): ContributionCalendar => {
+      const weeks = [];
+      for (let i = 0; i < daysData.length; i += 7) {
+        const slice = daysData.slice(i, i + 7);
+        weeks.push({
+          contributionDays: slice.map((day) => ({
+            contributionCount: day.count,
+            date: day.date,
+          })),
+        });
+      }
+      return {
+        totalContributions: daysData.reduce((sum, d) => sum + d.count, 0),
+        weeks,
+      };
+    };
+
+    // 1. Non-Leap Year (2027) Feb 27 to Mar 1
+    const nonLeapCalendar = buildCustomCalendar([
+      { date: '2027-02-27', count: 1 },
+      { date: '2027-02-28', count: 1 },
+      { date: '2027-03-01', count: 1 },
+    ]);
+
+    const resultNonLeap = calculateStreak(nonLeapCalendar, 'UTC', new Date('2027-03-01T12:00:00Z'));
+    expect(resultNonLeap.currentStreak).toBe(3);
+    expect(resultNonLeap.longestStreak).toBe(3);
+
+    // 2. Leap Year (2028) Feb 27 to Mar 1
+    const leapCalendar = buildCustomCalendar([
+      { date: '2028-02-27', count: 1 },
+      { date: '2028-02-28', count: 1 },
+      { date: '2028-02-29', count: 1 },
+      { date: '2028-03-01', count: 1 },
+    ]);
+
+    const resultLeap = calculateStreak(leapCalendar, 'UTC', new Date('2028-03-01T12:00:00Z'));
+    expect(resultLeap.currentStreak).toBe(4);
+    expect(resultLeap.longestStreak).toBe(4);
+
+    // 3. Leap Year (2028) with gap on leap day (Feb 29 has 0 commits)
+    const leapCalendarWithGap = buildCustomCalendar([
+      { date: '2028-02-27', count: 1 },
+      { date: '2028-02-28', count: 1 },
+      { date: '2028-02-29', count: 0 },
+      { date: '2028-03-01', count: 1 },
+    ]);
+
+    const resultLeapGap = calculateStreak(
+      leapCalendarWithGap,
+      'UTC',
+      new Date('2028-03-01T12:00:00Z')
+    );
+    expect(resultLeapGap.currentStreak).toBe(1);
+    expect(resultLeapGap.longestStreak).toBe(2);
+  });
+
   it('correctly calculates current and longest streaks when commits are made exclusively on Saturdays and Sundays', () => {
     // 2024-01-01 is a Monday.
     // Days in a week: Mon, Tue, Wed, Thu, Fri, Sat, Sun
