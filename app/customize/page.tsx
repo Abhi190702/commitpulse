@@ -9,6 +9,7 @@ import { ControlsPanel } from './components/ControlsPanel';
 import { AdvancedSettingsPanel } from './components/AdvancedSettingsPanel';
 import { ExportPanel } from './components/ExportPanel';
 import InteractiveViewer from '@/components/InteractiveViewer';
+import { Footer } from '@/app/components/Footer';
 import DOMPurify from 'dompurify';
 import type {
   ExportFormat,
@@ -660,6 +661,7 @@ function CustomizePageInner(): ReactElement {
           </motion.aside>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }
