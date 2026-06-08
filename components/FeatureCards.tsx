@@ -4,9 +4,7 @@ import { useRef, useState, useEffect, type ReactNode } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
-if (typeof window !== 'undefined') {
-  gsap.registerPlugin(ScrollTrigger);
-}
+let gsapRegistered = false;
 
 /* ─── Types ─── */
 interface FeatureCardProps {
@@ -44,7 +42,7 @@ function FloatingParticle({
     tl.to(ref.current, {
       opacity: 0.6,
       y: -60,
-      x: `random(-30, 30)`,
+      x: Math.random() * 60 - 30,
       duration: duration * 0.4,
       ease: 'power2.out',
     })
@@ -119,8 +117,6 @@ function AnimatedBorder({ color, isHovered }: { color: string; isHovered: boolea
       style={{
         opacity: 0,
         background: `conic-gradient(from 0deg, transparent, ${color}, transparent, ${color}44, transparent)`,
-        mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-        maskComposite: 'exclude',
         WebkitMaskComposite: 'xor',
         padding: '1.5px',
       }}
@@ -144,6 +140,10 @@ export function FeatureCard({ icon, title, desc, accent, index, accentColor }: F
     { size: number; delay: number; duration: number; startX: string; startY: string }[]
   >([]);
 
+  // Client-only particle generation: Math.random() must not run on the server
+  // because it would produce different values than the client, causing a React
+  // hydration mismatch. Generating them in a mount effect ensures SSR outputs
+  // an empty array and the randomised particles only appear after hydration.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setParticles(
@@ -417,6 +417,13 @@ export function FeatureCard({ icon, title, desc, accent, index, accentColor }: F
 
 /* ─── Section Wrapper (optional heading + background glow) ─── */
 export function FeatureCardsSection({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    if (!gsapRegistered) {
+      gsap.registerPlugin(ScrollTrigger);
+      gsapRegistered = true;
+    }
+  }, []);
+
   const sectionRef = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
 

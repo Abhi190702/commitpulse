@@ -2,7 +2,7 @@ import { themes } from '../../lib/svg/themes';
 
 export type Scale = 'linear' | 'log';
 
-export type ExportFormat = 'markdown' | 'html' | 'action';
+export type ExportFormat = 'markdown' | 'html' | 'action' | 'tsx';
 
 export type ThemeKey = Extract<keyof typeof themes, string>;
 
@@ -34,12 +34,13 @@ export const FONTS = [
   { value: 'roboto', label: 'Roboto' },
 ] as const satisfies readonly { value: string; label: string }[];
 
-export type Font = (typeof FONTS)[number]['value'];
+export type Font = (typeof FONTS)[number]['value'] | string;
 
 export const VIEW_MODES = [
   { value: 'default', label: 'Default' },
   { value: 'monthly', label: 'Monthly' },
   { value: 'pulse', label: 'Heartbeat Pulse' },
+  { value: 'languages', label: 'Top Languages Skyline' },
 ] as const satisfies readonly { value: string; label: string }[];
 
 export type ViewMode = (typeof VIEW_MODES)[number]['value'];

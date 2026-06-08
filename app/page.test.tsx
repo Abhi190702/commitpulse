@@ -1,9 +1,16 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @next/next/no-img-element, jsx-a11y/alt-text */
+import type { HTMLAttributes, AnchorHTMLAttributes, ReactNode, ImgHTMLAttributes } from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import LandingPage from './page';
+
+type MockLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
+  children?: ReactNode;
+  href: string;
+};
+
+type MockImageProps = ImgHTMLAttributes<HTMLImageElement> & {
+  fill?: boolean;
+};
 
 // Mock child components to isolate LandingPage testing
 vi.mock('./components/CustomizeCTA', () => ({
@@ -14,22 +21,34 @@ vi.mock('@/components/commitpulse-logo', () => ({
   CommitPulseLogo: () => <svg data-testid="commitpulse-logo"></svg>,
 }));
 
+vi.mock('@/components/WallOfLove', () => ({
+  WallOfLove: () => <div data-testid="wall-of-love">Wall of Love</div>,
+}));
+
+vi.mock('@/components/DiscordButton', () => ({
+  DiscordButton: () => <button data-testid="discord-button">Discord Button</button>,
+}));
+
 // next/image is no longer used — SVG preview is fetched via useEffect and
 // rendered inline. The mock below keeps the import from erroring if any
 // other test file still imports it.
 vi.mock('next/image', () => ({
-  default: (props: any) => <img {...props} />,
+  // eslint-disable-next-line jsx-a11y/alt-text, @next/next/no-img-element
+  default: ({ fill: _fill, ...rest }: MockImageProps) => <img {...rest} />,
 }));
 
 vi.mock('next/link', () => ({
-  default: ({ children, href, ...props }: any) => (
+  default: ({ children, href, ...props }: MockLinkProps) => (
     <a href={href} {...props} data-testid="next-link">
       {children}
     </a>
   ),
 }));
 
-// Mock GSAP so FeatureCards don't break in JSDOM
+vi.mock('@/utils/tracking', () => ({
+  trackUser: vi.fn(),
+}));
+
 vi.mock('gsap', () => {
   const tween = { kill: vi.fn() };
   const timeline = {
@@ -38,21 +57,54 @@ vi.mock('gsap', () => {
     set: vi.fn().mockReturnThis(),
     kill: vi.fn(),
   };
+  const mockGsap = {
+    registerPlugin: vi.fn(),
+    set: vi.fn(),
+    to: vi.fn().mockReturnValue(tween),
+    fromTo: vi.fn().mockReturnValue(tween),
+    timeline: vi.fn().mockReturnValue(timeline),
+    context: vi.fn((_fn: () => void) => ({ revert: vi.fn() })),
+  };
   return {
-    default: {
-      registerPlugin: vi.fn(),
-      set: vi.fn(),
-      to: vi.fn().mockReturnValue(tween),
-      fromTo: vi.fn().mockReturnValue(tween),
-      timeline: vi.fn().mockReturnValue(timeline),
-      context: vi.fn((_fn: any) => ({ revert: vi.fn() })),
-    },
+    default: mockGsap,
+    gsap: mockGsap,
   };
 });
+
+vi.mock('@gsap/react', () => ({
+  useGSAP: vi.fn((callback) => {
+    // Optionally execute callback for coverage, or just do nothing
+    if (typeof callback === 'function') {
+      callback();
+    }
+  }),
+}));
 
 vi.mock('gsap/ScrollTrigger', () => ({
   ScrollTrigger: {},
 }));
+
+type MotionBaseProps = HTMLAttributes<HTMLElement> & {
+  children?: ReactNode;
+  whileHover?: unknown;
+  whileTap?: unknown;
+  whileInView?: unknown;
+  initial?: unknown;
+  animate?: unknown;
+  exit?: unknown;
+  transition?: unknown;
+  viewport?: unknown;
+  layoutId?: string;
+};
+
+type MotionAnchorProps = MotionBaseProps & AnchorHTMLAttributes<HTMLAnchorElement>;
+
+type MotionImgProps = ImgHTMLAttributes<HTMLImageElement> & {
+  initial?: unknown;
+  animate?: unknown;
+  exit?: unknown;
+  transition?: unknown;
+};
 
 // Mock framer-motion
 vi.mock('framer-motion', () => ({
@@ -60,17 +112,17 @@ vi.mock('framer-motion', () => ({
     div: ({
       children,
       className,
-      whileHover,
-      whileTap,
-      whileInView,
-      initial,
-      animate,
-      exit,
-      transition,
-      viewport,
-      layoutId,
+      whileHover: _wh,
+      whileTap: _wt,
+      whileInView: _wiv,
+      initial: _i,
+      animate: _a,
+      exit: _e,
+      transition: _tr,
+      viewport: _vp,
+      layoutId: _lid,
       ...props
-    }: any) => (
+    }: MotionBaseProps) => (
       <div className={className} data-testid="motion-div" {...props}>
         {children}
       </div>
@@ -78,17 +130,17 @@ vi.mock('framer-motion', () => ({
     p: ({
       children,
       className,
-      whileHover,
-      whileTap,
-      whileInView,
-      initial,
-      animate,
-      exit,
-      transition,
-      viewport,
-      layoutId,
+      whileHover: _wh,
+      whileTap: _wt,
+      whileInView: _wiv,
+      initial: _i,
+      animate: _a,
+      exit: _e,
+      transition: _tr,
+      viewport: _vp,
+      layoutId: _lid,
       ...props
-    }: any) => (
+    }: MotionBaseProps) => (
       <p className={className} data-testid="motion-p" {...props}>
         {children}
       </p>
@@ -97,38 +149,38 @@ vi.mock('framer-motion', () => ({
       children,
       className,
       href,
-      whileHover,
-      whileTap,
-      whileInView,
-      initial,
-      animate,
-      exit,
-      transition,
-      viewport,
-      layoutId,
+      whileHover: _wh,
+      whileTap: _wt,
+      whileInView: _wiv,
+      initial: _i,
+      animate: _a,
+      exit: _e,
+      transition: _tr,
+      viewport: _vp,
+      layoutId: _lid,
       ...props
-    }: any) => (
+    }: MotionAnchorProps) => (
       <a href={href} className={className} data-testid="motion-a" {...props}>
         {children}
       </a>
     ),
     img: ({
-      children,
       className,
       src,
       alt,
       onLoad,
       onError,
-      initial,
-      animate,
-      exit,
-      transition,
+      initial: _i,
+      animate: _a,
+      exit: _e,
+      transition: _tr,
       ...props
-    }: any) => (
+    }: MotionImgProps) => (
+      // eslint-disable-next-line @next/next/no-img-element
       <img className={className} src={src} alt={alt} onLoad={onLoad} onError={onError} {...props} />
     ),
   },
-  AnimatePresence: ({ children }: any) => <>{children}</>,
+  AnimatePresence: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }));
 
 const mockRecentSearches = {
@@ -145,10 +197,19 @@ vi.mock('@/hooks/useRecentSearches', () => ({
 describe('LandingPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Clear persisted username between tests
+    window.localStorage.clear();
+
     mockRecentSearches.searches = ['octocat', 'torvalds'];
     mockRecentSearches.addSearch = vi.fn();
     mockRecentSearches.clearSearches = vi.fn();
     mockRecentSearches.removeSearch = vi.fn();
+
+    Object.defineProperty(window, 'isSecureContext', {
+      value: true,
+      configurable: true,
+    });
 
     // Mock navigator.clipboard
     Object.assign(navigator, {
@@ -157,7 +218,6 @@ describe('LandingPage', () => {
       },
     });
 
-    // Mock scrollIntoView
     window.HTMLElement.prototype.scrollIntoView = vi.fn();
   });
 
@@ -262,6 +322,26 @@ describe('LandingPage', () => {
     });
   });
 
+  it('does not show copied state when clipboard write fails', async () => {
+    vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error('Permission denied'));
+
+    render(<LandingPage />);
+    const input = screen.getByPlaceholderText('Enter GitHub Username') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'jhasourav07' } });
+
+    const copyButton = screen.getByText('Copy Link').closest('button');
+    fireEvent.click(copyButton!);
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        expect.stringContaining('/api/streak?user=jhasourav07')
+      );
+    });
+
+    expect(screen.queryByText('Copied')).toBeNull();
+    expect(screen.queryByText('Your Monolith is Ready - Deploy It in 4 Steps')).toBeNull();
+  });
+
   it('disables Copy Link button when username is empty', () => {
     render(<LandingPage />);
 
@@ -285,10 +365,17 @@ describe('LandingPage', () => {
 
     const featureHeadings = screen.getAllByRole('heading', { level: 3 });
 
-    expect(featureHeadings).toHaveLength(3);
+    expect(featureHeadings).toHaveLength(6);
 
     const titles = featureHeadings.map((h) => h.textContent);
-    expect(titles).toEqual(['Real-time Sync', 'Theme Engine', 'Isometric Math']);
+    expect(titles).toEqual([
+      'Real-time Sync',
+      'Theme Engine',
+      'Isometric Math',
+      'Navigation',
+      'Resources',
+      'Connect',
+    ]);
   });
 
   it('renders the CustomizeCTA', () => {
@@ -413,6 +500,46 @@ describe('LandingPage', () => {
     });
 
     // The SVG text is never injected into the DOM, so no <script> tag can exist
-    expect(document.querySelector('script')).toBeNull();
+    expect(document.querySelector('img[data-testid="badge-img"]')).not.toBeNull();
+  });
+
+  it('shows shimmer skeleton on stat cards while user details are loading', async () => {
+    vi.spyOn(global, 'fetch').mockImplementation(() => new Promise(() => {}));
+
+    render(<LandingPage />);
+    const input = screen.getByPlaceholderText('Enter GitHub Username') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'octocat' } });
+    });
+
+    await waitFor(() => {
+      const skeletons = document.querySelectorAll('.shimmer');
+      expect(skeletons.length).toBeGreaterThanOrEqual(4);
+    });
+
+    vi.restoreAllMocks();
+  });
+
+  it('shows "Unable to load stats" error state on stat cards when fetch fails', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'Internal server error' }),
+    } as Response);
+
+    render(<LandingPage />);
+    const input = screen.getByPlaceholderText('Enter GitHub Username') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'octocat' } });
+    });
+
+    await waitFor(() => {
+      const errorMessages = screen.getAllByText('Unable to load stats');
+      expect(errorMessages.length).toBe(4);
+    });
+
+    vi.restoreAllMocks();
   });
 });

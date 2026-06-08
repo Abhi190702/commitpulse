@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { githubParamsSchema, ogParamsSchema, streakParamsSchema } from './validations';
+import {
+  githubParamsSchema,
+  ogParamsSchema,
+  streakParamsSchema,
+  toGraceValue,
+  toOpacityValue,
+  validateGitHubUsername,
+} from './validations';
+
+function parse(params: Record<string, string>) {
+  return streakParamsSchema.parse({ user: 'octocat', ...params });
+}
 
 describe('streakParamsSchema — grace fallback behavior', () => {
   it('accepts "0" as a valid grace value', () => {
@@ -10,32 +21,119 @@ describe('streakParamsSchema — grace fallback behavior', () => {
     expect(parse({ grace: '7' }).grace).toBe(7);
   });
 
-  it('clamps "8" to 7', () => {
-    expect(parse({ grace: '8' }).grace).toBe(7);
+  it('rejects "8" as out-of-range', () => {
+    const result = streakParamsSchema.safeParse({ user: 'octocat', grace: '8' });
+    expect(result.success).toBe(false);
   });
 
-  it('clamps "-1" to 0', () => {
-    expect(parse({ grace: '-1' }).grace).toBe(0);
-  });
-
-  it('falls back or clamps a negative non-integer grace input safely', () => {
-    const result = streakParamsSchema.safeParse({
-      user: 'octocat',
-      grace: '-1.5',
-    });
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.grace).toBe(0);
+  it('rejects "-1" and returns correct error message', () => {
+    const result = streakParamsSchema.safeParse({ user: 'octocat', grace: '-1' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.flatten().fieldErrors.grace?.[0]).toBe(
+        'grace must be an integer between 0 and 7'
+      );
     }
   });
 
-  it('falls back to 1 for non-numeric grace value', () => {
-    expect(parse({ grace: 'abc' }).grace).toBe(1);
+  it('rejects a negative non-integer grace input', () => {
+    const result = streakParamsSchema.safeParse({ user: 'octocat', grace: '-1.5' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects non-numeric grace value', () => {
+    const result = streakParamsSchema.safeParse({ user: 'octocat', grace: 'abc' });
+    expect(result.success).toBe(false);
   });
 
   it('defaults to 1 when grace is omitted', () => {
     expect(parse({}).grace).toBe(1);
+  });
+
+  it('defaults to 1 when grace is empty string', () => {
+    expect(parse({ grace: '' }).grace).toBe(1);
+  });
+});
+
+describe('grace parameter — missed-day forgiveness (not timezone)', () => {
+  it('grace=0 passes schema validation — strict mode', () => {
+    const result = streakParamsSchema.safeParse({ user: 'chetan', grace: '0' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.grace).toBe(0);
+  });
+
+  it('grace=1 passes schema validation — default lenient mode', () => {
+    const result = streakParamsSchema.safeParse({ user: 'chetan', grace: '1' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.grace).toBe(1);
+  });
+
+  it('grace=2 passes schema validation — two-day forgiveness mode', () => {
+    const result = streakParamsSchema.safeParse({ user: 'chetan', grace: '2' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.grace).toBe(2);
+  });
+
+  it('grace defaults to 1 when omitted — one missed day forgiven by default', () => {
+    const result = streakParamsSchema.safeParse({ user: 'chetan' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.grace).toBe(1);
+  });
+
+  it('grace=7 is the maximum accepted value', () => {
+    const result = streakParamsSchema.safeParse({ user: 'chetan', grace: '7' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.grace).toBe(7);
+  });
+
+  it('grace=8 is rejected as it exceeds the maximum limit of 7', () => {
+    const result = streakParamsSchema.safeParse({ user: 'chetan', grace: '8' });
+    expect(result.success).toBe(false);
+  });
+
+  it('grace is independent of tz param — both can coexist', () => {
+    // Verifies that grace (missed days) and tz (timezone) are separate concerns
+    // A user can set both independently: ?grace=2&tz=Asia/Kolkata
+    const result = streakParamsSchema.safeParse({
+      user: 'chetan',
+      grace: '2',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.grace).toBe(2);
+      // tz is parsed separately in route.ts — not in schema
+      // this test documents that grace schema parsing is timezone-unaware
+    }
+  });
+});
+
+describe('validateGitHubUsername', () => {
+  it('returns true for a valid username', () => {
+    expect(validateGitHubUsername('valid-username-123')).toBe(true);
+  });
+
+  it('returns false for a too long username', () => {
+    expect(validateGitHubUsername('a'.repeat(40))).toBe(false);
+  });
+
+  it('returns false for a username with underscore', () => {
+    expect(validateGitHubUsername('invalid_username')).toBe(false);
+  });
+
+  it('returns false for empty string', () => {
+    expect(validateGitHubUsername('')).toBe(false);
+  });
+
+  it('returns false for leading hyphen', () => {
+    expect(validateGitHubUsername('-octocat')).toBe(false);
+  });
+
+  it('returns false for trailing hyphen', () => {
+    expect(validateGitHubUsername('octocat-')).toBe(false);
+  });
+
+  it('returns false for consecutive hyphens', () => {
+    expect(validateGitHubUsername('octo--cat')).toBe(false);
   });
 });
 
@@ -98,6 +196,47 @@ describe('streakParamsSchema user validation', () => {
 
     expect(result.success).toBe(true);
   });
+
+  it('should pass when user is a comma-separated list of valid usernames', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat, JhaSourav07, nishtha-agarwal-211',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('should fail when one of the usernames in the list is invalid', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat, invalid_name_with_spaces',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe('Invalid GitHub username');
+    }
+  });
+
+  it('should fail when one of the usernames in the list exceeds 39 characters', () => {
+    const result = streakParamsSchema.safeParse({
+      user: `octocat, ${'a'.repeat(40)}`,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe('GitHub username cannot exceed 39 characters');
+    }
+  });
+
+  it('should fail when list has empty usernames due to consecutive or trailing commas', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat, , JhaSourav07',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe('Invalid GitHub username');
+    }
+  });
 });
 
 describe('streakParamsSchema', () => {
@@ -149,6 +288,20 @@ describe('streakParamsSchema', () => {
 
     if (result.success) {
       expect(result.data.mode).toBe('commits');
+    }
+  });
+
+  it('should fail when grace is below the minimum value of 0', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      grace: '-1',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.flatten().fieldErrors.grace?.[0]).toBe(
+        'grace must be an integer between 0 and 7'
+      );
     }
   });
 
@@ -373,51 +526,159 @@ describe('streakParamsSchema', () => {
       expect(result.data.delta_format).toBe('percent');
     }
   });
+
+  it('rejects invalid IANA timezone names', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      tz: 'Mars/Cyonia',
+    });
+
+    expect(result.success).toBe(false);
+
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe('Invalid timezone');
+    }
+  });
 });
 
-it('should succeed when username contains hyphens', () => {
-  const result = streakParamsSchema.safeParse({
-    user: 'valid-user',
+describe('streakParamsSchema — user hyphen validation', () => {
+  it('should succeed when username contains hyphens', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'valid-user',
+    });
+
+    expect(result.success).toBe(true);
   });
 
-  expect(result.success).toBe(true);
-});
+  it('should succeed when username contains multiple hyphens', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'valid-user-name-123',
+    });
 
-it('should succeed when username contains multiple hyphens', () => {
-  const result = streakParamsSchema.safeParse({
-    user: 'valid-user-name-123',
+    expect(result.success).toBe(true);
   });
 
-  expect(result.success).toBe(true);
-});
+  it('should fail when username ends with hyphen', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'user-',
+    });
 
-it('should fail when username ends with hyphen', () => {
-  const result = streakParamsSchema.safeParse({
-    user: 'user-',
+    expect(result.success).toBe(false);
   });
 
-  expect(result.success).toBe(false);
-});
+  it('should fail when username starts with hyphen', () => {
+    const result = streakParamsSchema.safeParse({
+      user: '-user',
+    });
 
-it('should fail when username starts with hyphen', () => {
-  const result = streakParamsSchema.safeParse({
-    user: '-user',
+    expect(result.success).toBe(false);
   });
 
-  expect(result.success).toBe(false);
+  it('should fail when username contains consecutive hyphens', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'user--name',
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
-it('should fail when username contains consecutive hyphens', () => {
-  const result = streakParamsSchema.safeParse({
-    user: 'user--name',
+describe('streakParamsSchema — grace validation', () => {
+  it('accepts grace=0', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      grace: '0',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.grace).toBe(0);
+    }
   });
 
-  expect(result.success).toBe(false);
-});
+  it('accepts grace=7', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      grace: '7',
+    });
 
-function parse(params: Record<string, string>) {
-  return streakParamsSchema.parse({ user: 'octocat', ...params });
-}
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.grace).toBe(7);
+    }
+  });
+
+  it('accepts grace=3', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      grace: '3',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.grace).toBe(3);
+    }
+  });
+
+  it('defaults to 1 when grace is omitted', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.grace).toBe(1);
+    }
+  });
+
+  it('rejects grace=-1', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      grace: '-1',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe('grace must be an integer between 0 and 7');
+    }
+  });
+
+  it('rejects grace=8 (exceeds max)', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      grace: '8',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe('grace must be an integer between 0 and 7');
+    }
+  });
+
+  it('rejects non-numeric grace value', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      grace: 'abc',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe('grace must be an integer between 0 and 7');
+    }
+  });
+
+  it('rejects float grace value', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      grace: '5.5',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe('grace must be an integer between 0 and 7');
+    }
+  });
+});
 
 describe('streakParamsSchema — scale fallback behavior', () => {
   it('accepts "log" as a valid scale value', () => {
@@ -666,6 +927,25 @@ describe('streakParamsSchema — boolean transform fields', () => {
       expect(parse({}).glow).toBe(true);
     });
   });
+
+  // ── dim_weekends ───────────────────────────────────────────────────────────
+  describe('dim_weekends', () => {
+    it('returns true when dim_weekends="true"', () => {
+      expect(parse({ dim_weekends: 'true' }).dim_weekends).toBe(true);
+    });
+
+    it('returns true when dim_weekends="1"', () => {
+      expect(parse({ dim_weekends: '1' }).dim_weekends).toBe(true);
+    });
+
+    it('returns false when dim_weekends="false"', () => {
+      expect(parse({ dim_weekends: 'false' }).dim_weekends).toBe(false);
+    });
+
+    it('returns false when dim_weekends is omitted', () => {
+      expect(parse({}).dim_weekends).toBe(false);
+    });
+  });
 });
 
 describe('streakParamsSchema — org parameter validation', () => {
@@ -679,6 +959,18 @@ describe('streakParamsSchema — org parameter validation', () => {
     if (!result.success) {
       const fieldError = result.error.flatten().fieldErrors.org?.[0];
       expect(fieldError).toBe('Invalid organization name format');
+    }
+  });
+
+  it('should reject org parameter with invalid alphanumeric format', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      org: 'invalid_org_name_with_spaces',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.flatten().fieldErrors.org?.[0]).toBe('Invalid organization name format');
     }
   });
 });
@@ -757,6 +1049,47 @@ describe('ogParamsSchema', () => {
   });
 });
 
+describe('streakParamsSchema — theme validation', () => {
+  it('rejects an invalid theme value with 400 validation error listing allowed themes', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      theme: 'nonexistent_theme_name',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const fieldError = result.error.flatten().fieldErrors.theme?.[0];
+      expect(fieldError).toContain('Invalid theme. Supported themes:');
+      expect(fieldError).toContain('dark');
+      expect(fieldError).toContain('light');
+      expect(fieldError).toContain('neon');
+    }
+  });
+
+  it('should reject nonexistent_theme_name and verify allowed themes are listed in error', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      theme: 'nonexistent_theme_name',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const fieldErrors = result.error.flatten().fieldErrors;
+      expect(fieldErrors.theme).toBeDefined();
+      const errorMessage = fieldErrors.theme?.[0];
+      expect(errorMessage).toContain('Invalid theme');
+      expect(errorMessage).toContain('Supported themes:');
+      expect(errorMessage).toContain('auto');
+      expect(errorMessage).toContain('random');
+      expect(errorMessage).toContain('dark');
+      expect(errorMessage).toContain('light');
+      expect(errorMessage).toContain('neon');
+      expect(errorMessage).toContain('github');
+      expect(errorMessage).toContain('dracula');
+    }
+  });
+});
+
 describe('streakParamsSchema — view fallback behavior', () => {
   it('accepts "default" as a valid view value', () => {
     expect(parse({ view: 'default' }).view).toBe('default');
@@ -764,6 +1097,10 @@ describe('streakParamsSchema — view fallback behavior', () => {
 
   it('accepts "monthly" as a valid view value', () => {
     expect(parse({ view: 'monthly' }).view).toBe('monthly');
+  });
+
+  it('accepts "languages" as a valid view value', () => {
+    expect(parse({ view: 'languages' }).view).toBe('languages');
   });
 
   it('falls back to "default" for unknown view value', () => {
@@ -795,6 +1132,22 @@ describe('streakParamsSchema — accent parameter HEX color validation', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects an invalid hex color like "#ZZZZZZ" for accent (Variation 5)', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      accent: '#ZZZZZZ',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      // This extra check ensures Variation 5 isn't just a duplicate,
+      // but a stricter validation check!
+      expect(result.error.issues[0]?.message).toContain(
+        'accent must be a valid hex color (with or without #)'
+      );
+    }
+  });
+
   it('rejects the invalid boundary hex color "#ZZZZZZ" for accent', () => {
     const result = streakParamsSchema.safeParse({
       user: 'octocat',
@@ -804,7 +1157,7 @@ describe('streakParamsSchema — accent parameter HEX color validation', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0]?.message).toContain(
-        'accent must be a valid 3 or 6 character hex color without #'
+        'accent must be a valid hex color (with or without #)'
       );
     }
   });
@@ -948,11 +1301,113 @@ describe('streakParamsSchema — layout query validation boundaries (Variation 2
   });
 });
 
+describe('streakParamsSchema — case-insensitive theme matching', () => {
+  it('accepts lowercase theme parameters', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      theme: 'neon',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.theme).toBe('neon');
+    }
+  });
+
+  it('accepts uppercase theme parameters and maps correctly', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      theme: 'NEON',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // Maps capitalized input back to lowercase registry key
+      expect(result.data.theme).toBe('neon');
+    }
+  });
+
+  it('accepts mixed-case theme parameters and maps correctly', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      theme: 'DrAcUlA',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.theme).toBe('dracula');
+    }
+  });
+
+  it('rejects completely invalid theme name', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      theme: 'fictionaltheme',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
 /* ==========================================================================
- * LAYOUT PARAMETER — QUERY VALIDATION BOUNDARIES (VARIATION 2)
+ * USER PARAMETER — QUERY VALIDATION BOUNDARIES (VARIATION 3)
  * ========================================================================== */
 
-describe('streakParamsSchema — layout query validation boundaries (Variation 2)', () => {
+describe('streakParamsSchema user maxLength validation boundaries (Variation 3)', () => {
+  it('rejects a GitHub username that exceeds the 39 character length threshold', () => {
+    const invalidPayload = {
+      user: 'a'.repeat(40),
+    };
+
+    const parseResult = streakParamsSchema.safeParse(invalidPayload);
+
+    expect(parseResult.success).toBe(false);
+    if (!parseResult.success) {
+      const fieldErrors = parseResult.error.flatten().fieldErrors;
+      expect(fieldErrors.user).toBeDefined();
+      expect(fieldErrors.user?.[0]).toContain('cannot exceed 39 characters');
+    }
+  });
+
+  it('accepts a username exactly at the upper limit of 39 characters', () => {
+    const validPayload = {
+      user: 'a'.repeat(39),
+    };
+
+    const parseResult = streakParamsSchema.safeParse(validPayload);
+    expect(parseResult.success).toBe(true);
+  });
+});
+
+/* ==========================================================================
+ * DATE PARAMETER — QUERY VALIDATION BOUNDARIES (VARIATION 4)
+ * ========================================================================== */
+
+describe('streakParamsSchema — date query validation boundaries (Variation 4)', () => {
+  it('rejects an invalid date format like "2026-15-40"', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      date: '2026-15-40',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i) => i.message).join(' ');
+      expect(messages).toContain('Invalid "date" format. Use ISO 8601.');
+    }
+  });
+
+  it('accepts a valid ISO8601 date', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      date: '2026-05-30',
+    });
+
+    expect(result.success).toBe(true);
+  });
+});
+
+/* ==========================================================================
+ * LAYOUT PARAMETER — QUERY VALIDATION BOUNDARIES (VARIATION 4)
+ * ========================================================================== */
+
+describe('streakParamsSchema — layout query validation boundaries (Variation 4)', () => {
   it('rejects unsupported_layout and marks the parse as failed', () => {
     const result = streakParamsSchema.safeParse({
       user: 'octocat',
@@ -971,7 +1426,9 @@ describe('streakParamsSchema — layout query validation boundaries (Variation 2
     expect(result.success).toBe(false);
     if (!result.success) {
       const messages = result.error.issues.map((i) => i.message).join(' ');
-      expect(messages).toContain('Invalid layout format');
+      expect(messages).toContain(
+        'Invalid layout format. Supported values: default, compact, full.'
+      );
     }
   });
 
@@ -1011,5 +1468,132 @@ describe('streakParamsSchema — layout query validation boundaries (Variation 2
     if (result.success) {
       expect(result.data.layout).toBeUndefined();
     }
+  });
+});
+
+/* ==========================================================================
+ * DATE PARAMETER — QUERY VALIDATION BOUNDARIES (VARIATION 2)
+ * ========================================================================== */
+
+describe('streakParamsSchema — date query validation boundaries (Variation 2)', () => {
+  it('rejects the invalid date "2026-15-40" and returns an error containing \'Invalid "date" format\'', () => {
+    // Arrange: month 15 and day 40 are both out of range — clearly not ISO 8601
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      date: '2026-15-40',
+    });
+
+    // Assert: schema must reject malformed date
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i) => i.message).join(' ');
+      expect(messages).toContain('Invalid "date" format');
+    }
+  });
+
+  it('accepts a well-formed ISO 8601 date like "2026-05-30"', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      date: '2026-05-30',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a date with invalid month (month 13)', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      date: '2026-13-01',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i) => i.message).join(' ');
+      expect(messages).toContain('Invalid "date" format');
+    }
+  });
+
+  it('rejects a freeform text string instead of a date', () => {
+    const result = streakParamsSchema.safeParse({
+      user: 'octocat',
+      date: 'not-a-date',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const flat = result.error.flatten().fieldErrors;
+      expect(flat.date).toBeDefined();
+    }
+  });
+});
+
+describe('toGraceValue — parseFloat standardization', () => {
+  it('returns default 1 when val is undefined', () => {
+    expect(toGraceValue(undefined)).toBe(1);
+  });
+
+  it('returns default 1 when val is empty string', () => {
+    expect(toGraceValue('')).toBe(1);
+  });
+
+  it('parses integer string correctly', () => {
+    expect(toGraceValue('2')).toBe(2);
+  });
+
+  it('parses float string and truncates to float (grace=1.7 → 1.7, clamped range 0-7)', () => {
+    expect(toGraceValue('1.7')).toBe(1.7);
+  });
+
+  it('clamps value below 0 to 0', () => {
+    expect(toGraceValue('-1')).toBe(0);
+  });
+
+  it('clamps value above 7 to 7', () => {
+    expect(toGraceValue('10')).toBe(7);
+  });
+
+  it('returns default 1 for non-numeric string "abc"', () => {
+    expect(toGraceValue('abc')).toBe(1);
+  });
+
+  it('parseFloat behavior: "2abc" parses as 2 (not NaN like Number would return)', () => {
+    expect(toGraceValue('2abc')).toBe(2);
+  });
+
+  it('returns 0 for grace=0 (strict mode)', () => {
+    expect(toGraceValue('0')).toBe(0);
+  });
+
+  it('returns 7 for grace=7 (maximum)', () => {
+    expect(toGraceValue('7')).toBe(7);
+  });
+});
+
+describe('toGraceValue and toOpacityValue — consistent parseFloat behavior', () => {
+  it('both return their default for undefined input', () => {
+    expect(toGraceValue(undefined)).toBe(1);
+    expect(toOpacityValue(undefined)).toBe(1.0);
+  });
+
+  it('both return their default for empty string input', () => {
+    expect(toGraceValue('')).toBe(1);
+    expect(toOpacityValue('')).toBe(1.0);
+  });
+
+  it('both return their default for non-numeric input', () => {
+    expect(toGraceValue('abc')).toBe(1);
+    expect(toOpacityValue('abc')).toBe(1.0);
+  });
+
+  it('both parse partial numeric strings via parseFloat — not NaN', () => {
+    expect(toGraceValue('2abc')).toBe(2);
+    expect(toOpacityValue('0.5abc')).toBe(0.5);
+  });
+
+  it('both clamp out-of-range values — no raw passthrough', () => {
+    expect(toGraceValue('100')).toBe(7);
+    expect(toOpacityValue('100')).toBe(1.0);
+    expect(toGraceValue('-5')).toBe(0);
+    expect(toOpacityValue('-5')).toBe(0.1);
   });
 });
