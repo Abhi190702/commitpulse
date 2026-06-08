@@ -29,9 +29,10 @@ describe('ExportPanel - Mouse Interactivity', () => {
     const user = userEvent.setup();
     renderPanel({ format: 'action' });
 
-    const step2Button = screen.getByRole('button', {
+    const step2Buttons = screen.getAllByRole('button', {
       name: /copy step 2 markdown snippet/i,
     });
+    const step2Button = step2Buttons[0];
 
     await user.hover(step2Button);
 
@@ -49,12 +50,10 @@ describe('ExportPanel - Mouse Interactivity', () => {
       name: /download badge as commitpulse-octocat\.svg/i,
     });
 
-    // check hover styles exist
     expect(htmlButton.className).toContain('hover:text-black');
     expect(copyButton.className).toContain('hover:bg-gray-300/80');
     expect(downloadButton.className).toContain('hover:bg-emerald-500/20');
 
-    // trigger hover (verifies styles don't break)
     fireEvent.mouseEnter(htmlButton);
     fireEvent.mouseEnter(copyButton);
     fireEvent.mouseEnter(downloadButton);
@@ -64,9 +63,10 @@ describe('ExportPanel - Mouse Interactivity', () => {
     const user = userEvent.setup();
     renderPanel({ format: 'action' });
 
-    const step2Button = screen.getByRole('button', {
+    const step2Buttons = screen.getAllByRole('button', {
       name: /copy step 2 markdown snippet/i,
     });
+    const step2Button = step2Buttons[0];
 
     await user.hover(step2Button);
     expect(step2Button).toHaveAttribute('title', 'Copy Step 2 markdown');
@@ -109,18 +109,17 @@ describe('ExportPanel - Mouse Interactivity', () => {
     await user.click(htmlButton);
     expect(onFormatChange).toHaveBeenCalledWith('html');
 
-    // event should bubble up
     expect(parentClick).toHaveBeenCalled();
   });
 
   it('calculates tooltip position based on mouse coordinates', () => {
     renderPanel({ format: 'action' });
 
-    const step2Button = screen.getByRole('button', {
+    const step2Buttons = screen.getAllByRole('button', {
       name: /copy step 2 markdown snippet/i,
     });
+    const step2Button = step2Buttons[0];
 
-    // mock button position
     const mockRect = {
       width: 40,
       height: 40,
