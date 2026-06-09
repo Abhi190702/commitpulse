@@ -12,7 +12,7 @@ export default defineConfig({
       '.next',
       ...(process.argv.some((arg) => arg.includes('massive-scaling'))
         ? []
-        : ['**/*.massive-scaling.test.ts']),
+        : ['**/*.massive-scaling.test.ts', '**/*.massive-scaling.test.tsx']),
     ],
     maxWorkers: process.env.CI ? 2 : 15,
     testTimeout: 30000,
