@@ -398,4 +398,5 @@ export interface NotificationResponse {
   success: boolean;
   message: string;
   data?: NotificationPayload;
+  managementToken?: string;
 }
