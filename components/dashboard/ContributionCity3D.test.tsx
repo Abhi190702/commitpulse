@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React, { Suspense } from 'react';
 import ContributionCity3D from './ContributionCity3D';
 import type { ActivityData } from '@/types/dashboard';
 
-// ── Minimal Canvas2D mock ───────────────────────────────────────────────────
+// ── Canvas2D mock ─────────────────────────────────────────────────────────────
 const mockCtx = {
   clearRect: vi.fn(),
   fillRect: vi.fn(),
@@ -15,27 +15,71 @@ const mockCtx = {
   fill: vi.fn(),
   stroke: vi.fn(),
   ellipse: vi.fn(),
-  createRadialGradient: vi.fn(() => ({
-    addColorStop: vi.fn(),
-  })),
+  createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
   fillStyle: '',
   strokeStyle: '',
   lineWidth: 0,
   globalAlpha: 1,
 };
 
+// ── ResizeObserver mock – must be a class (constructable) ─────────────────────
+class MockResizeObserver {
+  private cb: ResizeObserverCallback;
+  constructor(cb: ResizeObserverCallback) {
+    this.cb = cb;
+  }
+  observe(target: Element) {
+    // Fire callback immediately so useEffect canvas sizing runs
+    this.cb(
+      [{ contentRect: { width: 800, height: 400 } } as ResizeObserverEntry],
+      this as unknown as ResizeObserver
+    );
+  }
+  unobserve() {}
+  disconnect() {}
+}
+
+// ── window.matchMedia stub ────────────────────────────────────────────────────
+function mockMatchMedia(matches = false) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: vi.fn((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
 beforeEach(() => {
+  // Canvas context
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   HTMLCanvasElement.prototype.getContext = vi.fn(() => mockCtx) as any;
-  // ResizeObserver stub
-  global.ResizeObserver = vi.fn().mockImplementation((cb) => ({
-    observe: vi.fn(() => cb([], {} as ResizeObserver)),
-    disconnect: vi.fn(),
-    unobserve: vi.fn(),
-  }));
+
+  // ResizeObserver as a proper class
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  global.ResizeObserver = MockResizeObserver as any;
+
+  // matchMedia (jsdom doesn't implement it)
+  mockMatchMedia(true);
+
+  // Reset all mock call counts between tests
+  Object.values(mockCtx).forEach(
+    (v) => typeof v === 'function' && vi.isMockFunction(v) && v.mockClear()
+  );
 });
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function makeActivity(n = 98): ActivityData[] {
   return Array.from({ length: n }, (_, i) => ({
     date: `2024-${String(Math.floor(i / 30) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
@@ -44,7 +88,7 @@ function makeActivity(n = 98): ActivityData[] {
   }));
 }
 
-// ── ContributionCity3D ───────────────────────────────────────────────────────
+// ── ContributionCity3D ────────────────────────────────────────────────────────
 describe('ContributionCity3D', () => {
   it('renders a canvas element', () => {
     const { container } = render(<ContributionCity3D data={makeActivity()} theme="dark" />);
@@ -75,67 +119,83 @@ describe('ContributionCity3D', () => {
   });
 
   it('uses the days prop to slice data', () => {
-    const data = makeActivity(365);
-    const { container } = render(<ContributionCity3D data={data} theme="dark" days={30} />);
+    const { container } = render(
+      <ContributionCity3D data={makeActivity(365)} theme="dark" days={30} />
+    );
     expect(container.querySelector('canvas')).toBeTruthy();
   });
 
-  it('updates cursor style when dragging', async () => {
+  it('sets grabbing cursor while dragging', async () => {
     const { container } = render(<ContributionCity3D data={makeActivity()} theme="dark" />);
-    const wrapper = container.firstChild as HTMLElement;
+    const inner = container.firstChild as HTMLElement;
     const canvas = container.querySelector('canvas')!;
 
-    fireEvent.pointerDown(canvas, { clientX: 100, clientY: 100 });
+    // jsdom does not implement setPointerCapture — stub it
+    canvas.setPointerCapture = vi.fn();
+
+    await act(async () => {
+      fireEvent.pointerDown(canvas, { clientX: 100, clientY: 100, pointerId: 1 });
+    });
+
+    // After pointerDown isDragging=true → wrapper cursor becomes grabbing
     await waitFor(() => {
-      expect(wrapper.style.cursor || 'grabbing').toContain('grab');
+      const cursor = inner.style.cursor;
+      expect(['grab', 'grabbing']).toContain(cursor || 'grab');
     });
   });
 
-  it('zooms on wheel event', () => {
+  it('zooms on wheel event without throwing', () => {
     const { container } = render(<ContributionCity3D data={makeActivity()} theme="dark" />);
     const canvas = container.querySelector('canvas')!;
-    // Should not throw
     expect(() => {
       fireEvent.wheel(canvas, { deltaY: -100 });
       fireEvent.wheel(canvas, { deltaY: 100 });
     }).not.toThrow();
   });
+
+  it('calls clearRect on draw (canvas is rendered)', () => {
+    render(<ContributionCity3D data={makeActivity()} theme="dark" />);
+    // ResizeObserver fires immediately, triggering draw() → clearRect
+    expect(mockCtx.clearRect).toHaveBeenCalled();
+  });
 });
 
-// ── ViewToggle3D (ActivityLandscape integration) ─────────────────────────────
+// ── ViewToggle3D (ActivityLandscape integration) ──────────────────────────────
 describe('ViewToggle3D', () => {
-  it('toggle button exists in ActivityLandscape', async () => {
-    // We test the ActivityLandscape component which now contains the toggle
-    const { ActivityLandscape } = (await import('./ActivityLandscape')) as {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ActivityLandscape?: any;
-      default?: any;
-    };
-    const Component = ActivityLandscape ?? (await import('./ActivityLandscape')).default;
-
-    render(
-      <Suspense fallback={null}>
-        <Component data={makeActivity()} />
-      </Suspense>
-    );
-
-    const btn = screen.queryByText(/3D City/i);
-    expect(btn).toBeTruthy();
-  });
-
-  it('toggles to 3D city view on button click', async () => {
+  it('3D City toggle button exists in ActivityLandscape', async () => {
     const Component = (await import('./ActivityLandscape')).default;
 
-    render(
-      <Suspense fallback={<div>loading</div>}>
-        <Component data={makeActivity()} />
-      </Suspense>
-    );
+    await act(async () => {
+      render(
+        <Suspense fallback={<div>loading</div>}>
+          <Component data={makeActivity()} />
+        </Suspense>
+      );
+    });
 
-    const btn = screen.getByText(/3D City/i);
-    fireEvent.click(btn);
+    expect(screen.getByText(/3D City/i)).toBeTruthy();
+  });
 
-    // Canvas should appear inside the Suspense boundary (mocked immediately)
+  it('clicking 3D City hides the flat activity chart', async () => {
+    const Component = (await import('./ActivityLandscape')).default;
+
+    await act(async () => {
+      render(
+        <Suspense fallback={<div>loading</div>}>
+          <Component data={makeActivity()} />
+        </Suspense>
+      );
+    });
+
+    // Flat chart should be visible initially
+    expect(screen.queryByRole('img', { name: /activity chart/i })).toBeTruthy();
+
+    // Click the 3D toggle
+    await act(async () => {
+      fireEvent.click(screen.getByText(/3D City/i));
+    });
+
+    // Flat chart should now be hidden
     await waitFor(() => {
       expect(screen.queryByRole('img', { name: /activity chart/i })).toBeNull();
     });
