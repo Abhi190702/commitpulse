@@ -31,7 +31,11 @@ export const metadata: Metadata = {
   creator: 'Sourav Jha',
   manifest: '/manifest.webmanifest',
   icons: {
-    apple: '/icons/icon-192x192.png',
+    icon: [
+      { url: '/favicon.ico', sizes: '48x48' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+    apple: '/apple-icon.png',
   },
   appleWebApp: {
     capable: true,
