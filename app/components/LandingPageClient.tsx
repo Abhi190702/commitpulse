@@ -735,9 +735,15 @@ export default function LandingPageClient() {
                         <Image
                           src={userDetails.avatar_url}
                           alt={userDetails.login}
-                          width={24}
-                          height={24}
+                          width={25}
+                          height={25}
                           className="w-6 h-6 rounded-full border border-emerald-500/20"
+                          unoptimized
+                          onError={(e) => {
+                            const img = e.currentTarget as HTMLImageElement;
+                            img.onerror = null;
+                            img.src = `https://github.com/${userDetails.login}.png`;
+                          }}
                         />
                         <div className="flex flex-col">
                           <span className="text-xs font-bold text-zinc-200">
@@ -791,10 +797,17 @@ export default function LandingPageClient() {
                             <Image
                               src={`https://github.com/${displayName}.png?size=40`}
                               alt={displayName}
-                              width={16}
-                              height={16}
+                              width={17}
+                              height={17}
                               className="w-4 h-4 rounded-full border border-zinc-200/20 dark:border-white/20"
+                              unoptimized
+                              onError={(e) => {
+                                const img = e.currentTarget as HTMLImageElement;
+                                img.onerror = null;
+                                img.style.display = 'none';
+                              }}
                             />
+
                             <button
                               type="button"
                               onClick={() => selectDemoUser(displayName)}
