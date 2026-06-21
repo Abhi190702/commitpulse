@@ -321,7 +321,7 @@ const baseStreakParamsSchema = z.object({
       (val) => {
         if (!val) return true;
         const yearNum = parseInt(val, 10);
-        const currentYear = new Date().getFullYear();
+        const currentYear = new Date().getUTCFullYear();
         return /^\d{4}$/.test(val) && yearNum >= 2008 && yearNum <= currentYear;
       },
       {
@@ -502,6 +502,23 @@ const baseStreakParamsSchema = z.object({
       { message: 'Invalid layout format. Supported values: default, compact, full.' }
     )
     .transform((val) => (!val ? undefined : val)),
+
+  // border parameter: optional hex color for SVG badge border stroke
+  border: z
+    .string()
+    .optional()
+    .refine(
+      (val) => {
+        if (val === undefined || val === '') return true;
+        const cleanVal = val.replace(/^#/, '');
+        return /^[0-9a-fA-F]{3,4}$|^[0-9a-fA-F]{6,8}$/.test(cleanVal);
+      },
+      { message: 'border must be a valid hex color (with or without #)' }
+    )
+    .transform((val) => {
+      if (!val) return undefined;
+      return sanitizeHexColor(val, '58a6ff');
+    }),
 });
 
 export const streakParamsSchema = baseStreakParamsSchema.refine(
@@ -512,17 +529,59 @@ export const streakParamsSchema = baseStreakParamsSchema.refine(
   }
 );
 
+const HEX_REGEX = /^([A-Fa-f0-9]{3,4}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/;
+
 export const githubParamsSchema = z.object({
-  username: z
-    .string({ error: 'Missing "username" parameter' })
-    .trim()
-    .min(1, { message: 'Username is required' })
-    .max(39, { message: 'GitHub username cannot exceed 39 characters' })
-    .regex(GITHUB_USERNAME_REGEX, {
-      message: 'Invalid GitHub username',
-    }),
-  refresh: z.string().optional().transform(toRefreshFlag),
-  bypassCache: z.string().optional().transform(toRefreshFlag),
+  // Preprocess leaves undefined untouched so we can distinguish missing vs empty string
+  username: z.preprocess(
+    (val) => (typeof val === 'string' ? val.trim() : val),
+    z
+      .custom<string>()
+      .refine((val) => val !== undefined && val !== null, {
+        message: 'Missing "username" parameter',
+      })
+      .transform((val) => String(val))
+      .refine((val) => val.length > 0, {
+        message: 'Username is required',
+      })
+      .refine((val) => val.length <= 39, {
+        message: 'GitHub username cannot exceed 39 characters',
+      })
+      .refine((val) => validateGitHubUsername(val), {
+        message: 'Invalid GitHub username',
+      })
+  ),
+
+  bg: z
+    .string()
+    .optional()
+    .transform((val) => val?.replace('#', '') || 'ffffff')
+    .refine((val) => HEX_REGEX.test(val))
+    .catch('ffffff'),
+
+  accent: z
+    .string()
+    .optional()
+    .transform((val) => val?.replace('#', '') || 'ff6b35')
+    .refine((val) => HEX_REGEX.test(val))
+    .catch('ff6b35'),
+
+  width: z
+    .string()
+    .optional()
+    .transform((val) => (val ? parseInt(val, 10) : 400))
+    .refine((val) => !isNaN(val) && val >= 100 && val <= 2000)
+    .catch(400),
+
+  height: z
+    .string()
+    .optional()
+    .transform((val) => (val ? parseInt(val, 10) : 150))
+    .refine((val) => !isNaN(val) && val >= 100 && val <= 2000)
+    .catch(150),
+
+  refresh: z.preprocess((val) => val === 'true', z.boolean()).default(false),
+  bypassCache: z.preprocess((val) => val === 'true', z.boolean()).default(false),
 });
 
 export const compareParamsSchema = z
@@ -613,7 +672,7 @@ export const wrappedParamsSchema = z.object({
       (val) => {
         if (!val) return true;
         const yearNum = parseInt(val, 10);
-        const currentYear = new Date().getFullYear();
+        const currentYear = new Date().getUTCFullYear();
         return /^\d{4}$/.test(val) && yearNum >= 2008 && yearNum <= currentYear;
       },
       {
@@ -734,12 +793,12 @@ export const resumeConfirmDataSchema = z.object({
   name: z
     .string()
     .trim()
-    .min(1, { message: 'Name and email are required' })
+    .min(2, { message: 'Name must be at least 2 characters' })
     .max(100, { message: 'Name must be at most 100 characters' }),
   email: z
     .string()
     .trim()
-    .min(1, { message: 'Name and email are required' })
+    .min(1, { message: 'A valid email address is required' })
     .max(254, { message: 'Email must be at most 254 characters' })
     .email({ message: 'Invalid email address' }),
   phone: z.string().trim().max(40, { message: 'Phone must be at most 40 characters' }).default(''),
