@@ -403,6 +403,8 @@ const baseStreakParamsSchema = z.object({
   refresh: z.string().optional().transform(toRefreshFlag),
   bypassCache: z.string().optional().transform(toRefreshFlag),
   hide_title: z.string().optional().transform(toBooleanFlag),
+  custom_title: z.string().optional(),
+  custom_subtitle: z.string().optional(),
   hide_background: z.string().optional().transform(toBooleanFlag),
   hide_stats: z.string().optional().transform(toBooleanFlag),
   lang: z.enum(supportedLanguages).catch('en').default('en'),
