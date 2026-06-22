@@ -1,5 +1,3 @@
-import 'server-only';
-
 type Context = Record<string, unknown>;
 
 const isProduction = process.env.NODE_ENV === 'production';

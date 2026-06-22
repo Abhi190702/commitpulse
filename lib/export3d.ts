@@ -1,5 +1,3 @@
-import 'server-only';
-
 // lib/export3d.ts
 
 import type { TowerData } from './svg/layout';
