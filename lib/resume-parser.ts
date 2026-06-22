@@ -1,3 +1,4 @@
+import 'server-only';
 import type { ParsedResume, Education, Experience } from '@/types/student';
 
 // Polyfill DOMMatrix for server-side/test environments to prevent pdfjs-dist crash

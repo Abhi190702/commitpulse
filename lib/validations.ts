@@ -1,3 +1,5 @@
+import 'server-only';
+
 // lib/validations.ts
 import { supportedLanguages } from './i18n/badgeLabels';
 import { z } from 'zod';
