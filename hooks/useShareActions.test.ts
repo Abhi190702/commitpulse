@@ -21,6 +21,102 @@ describe('useShareActions error logging', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockOnClose.mockReset();
+    document.body.innerHTML = '';
+    Reflect.deleteProperty(globalThis, 'fetch');
+    Reflect.deleteProperty(globalThis, 'ClipboardItem');
+  });
+
+  it('handleCopyLink calls navigator.clipboard.writeText with a profile URL containing the username', async () => {
+    const { result } = renderHook(() => useShareActions(mockUsername, mockExportData, mockClose));
+
+    let success;
+    await act(async () => {
+      success = await result.current.handleCopyLink();
+    });
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      expect.stringContaining(`/dashboard/${mockUsername}`)
+    );
+    expect(success).toBe(true);
+    expect(result.current.states['copy']).toBe('success');
+  });
+
+  it('resets copy state to idle after 2500ms', async () => {
+    const { result } = renderHook(() => useShareActions(mockUsername, mockExportData, mockClose));
+
+    await act(async () => {
+      await result.current.handleCopyLink();
+    });
+
+    expect(result.current.states['copy']).toBe('success');
+
+    act(() => {
+      vi.advanceTimersByTime(2500);
+    });
+
+    expect(result.current.states['copy']).toBe('idle');
+  });
+
+  it('copies dashboard image to clipboard successfully', async () => {
+    const writeMock = vi.fn().mockResolvedValue(undefined);
+    class MockClipboardItem {
+      constructor(public data: Record<string, Blob>) {}
+    }
+
+    Object.defineProperty(globalThis, 'ClipboardItem', {
+      value: MockClipboardItem,
+      configurable: true,
+      writable: true,
+    });
+
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        write: writeMock,
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+      configurable: true,
+    });
+
+    const { result } = renderHook(() => useShareActions(mockUsername, mockExportData, mockClose));
+
+    await act(async () => {
+      const promise = result.current.handleCopyImage();
+      await vi.advanceTimersByTimeAsync(150);
+      await promise;
+    });
+
+    expect(writeMock).toHaveBeenCalled();
+    expect(result.current.states['copyImage']).toBe('success');
+  });
+
+  it('handleTwitter opens window to share on twitter/x', () => {
+    const { result } = renderHook(() => useShareActions(mockUsername, mockExportData, mockClose));
+
+    act(() => {
+      result.current.handleTwitter();
+    });
+
+    expect(window.open).toHaveBeenCalledWith(
+      expect.stringContaining('twitter.com/intent/tweet'),
+      '_blank',
+      'noopener'
+    );
+    expect(mockClose).toHaveBeenCalled();
+  });
+
+  it('handleLinkedIn opens window to share on linkedin', () => {
+    const { result } = renderHook(() => useShareActions(mockUsername, mockExportData, mockClose));
+
+    act(() => {
+      result.current.handleLinkedIn();
+    });
+
+    expect(window.open).toHaveBeenCalledWith(
+      expect.stringContaining('linkedin.com/sharing/share-offsite'),
+      '_blank',
+      'noopener'
+    );
+    expect(mockClose).toHaveBeenCalled();
   });
 
   it('logs error when handleCopyLink fails', async () => {

@@ -180,6 +180,10 @@ export function useShareActions(
 
   const handleDownloadPNG = async () => {
     setOptionState('png', 'loading');
+
+    // Defer the heavy DOM capture to let the UI paint the loading state
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
     try {
       const node =
         document.getElementById('dashboard-root') ??
@@ -212,6 +216,10 @@ export function useShareActions(
 
   const handleDownloadWEBP = async () => {
     setOptionState('webp', 'loading');
+
+    // Defer the heavy DOM capture to let the UI paint the loading state
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
     try {
       const node =
         document.getElementById('dashboard-root') ??
@@ -245,6 +253,9 @@ export function useShareActions(
 
   const handleCopyImage = async () => {
     setOptionState('copyImage', 'loading');
+
+    // Defer the heavy DOM capture to let the UI paint the loading state
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
     try {
       if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {

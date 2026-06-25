@@ -1,3 +1,4 @@
+import 'server-only';
 import { randomUUID } from 'crypto';
 import { brotliCompressSync, brotliDecompressSync } from 'zlib';
 import logger from '@/lib/logger';
@@ -491,7 +492,7 @@ export class DistributedCache<T> {
         key,
         error: err,
       });
-      return true;
+      return false;
     }
   }
 
