@@ -121,6 +121,9 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
     }
 
     if (value === undefined) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`⚠ Missing translation key "${path}" in locale "${currentLang}"`);
+      }
       if (params && 'defaultValue' in params) {
         return params.defaultValue;
       }
@@ -154,6 +157,9 @@ export function useTranslation() {
       t: (path: string, params?: Record<string, string>): string => {
         const value = getNestedValue(en, path);
         if (value === undefined) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn(`⚠ Missing translation key "${path}" in locale "en"`);
+          }
           if (params && 'defaultValue' in params) {
             return params.defaultValue;
           }
